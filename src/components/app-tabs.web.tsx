@@ -1,3 +1,4 @@
+import Feather from '@expo/vector-icons/Feather';
 import {
   Tabs,
   TabList,
@@ -22,10 +23,16 @@ export default function AppTabs() {
       <TabList asChild>
         <CustomTabList>
           <TabTrigger name="home" href="/" asChild>
-            <TabButton>Home</TabButton>
+            <TabButton icon="home">Home</TabButton>
           </TabTrigger>
-          <TabTrigger name="explore" href="/explore" asChild>
-            <TabButton>Explore</TabButton>
+          <TabTrigger name="map" href="/map" asChild>
+            <TabButton icon="map-pin">Map</TabButton>
+          </TabTrigger>
+          <TabTrigger name="add" href="/add" asChild>
+            <TabButton icon="plus-circle">Add a market</TabButton>
+          </TabTrigger>
+          <TabTrigger name="profile" href="/profile" asChild>
+            <TabButton icon="user">Profile</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>
@@ -33,13 +40,19 @@ export default function AppTabs() {
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+type TabButtonProps = TabTriggerSlotProps & {
+  icon: keyof typeof Feather.glyphMap;
+};
+
+export function TabButton({ children, icon, isFocused, ...props }: TabButtonProps) {
+  const scheme = useColorScheme();
+  const colors = Colors[scheme === 'unspecified' ? 'light' : (scheme ?? 'light')];
+
   return (
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
-      <ThemedView
-        type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
-        style={styles.tabButtonView}>
-        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
+      <ThemedView type="backgroundElement" style={styles.tabButtonView}>
+        <Feather name={icon} size={16} color={isFocused ? colors.accent : colors.textSecondary} />
+        <ThemedText type="small" themeColor={isFocused ? 'accent' : 'textSecondary'}>
           {children}
         </ThemedText>
       </ThemedView>
@@ -101,6 +114,9 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   tabButtonView: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,

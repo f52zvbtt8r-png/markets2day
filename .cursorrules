@@ -1,0 +1,35 @@
+# markets2day — project rules for Cursor
+
+## Stack
+- Expo (React Native), managed workflow — no custom native code unless explicitly necessary
+- Styling: NativeWind (Tailwind classes for RN)
+- Backend: Supabase (Postgres + PostGIS, Auth, Storage) via `src/lib/supabase.js`
+- Navigation: React Navigation (bottom tabs + native stack for the market detail screen)
+- Fonts: Bebas Neue (display/headers), Work Sans (body) — loaded via expo-font
+
+## Design system
+Always use the color tokens and font names from `src/constants/theme.ts`. Never invent new
+hex colors — if a new shade is genuinely needed, add it to theme.ts first and explain why.
+
+Palette:
+- paper #F3ECDD (background)
+- card #FBF8F2 (surfaces)
+- ink #2E2015 (primary text)
+- inkSoft #8A7862 (secondary text)
+- burgundy #7A2A34 / burgundyDark #4A1017 (primary accent, CTAs, organiser-verified)
+- blue #9DBBDA / blueDark #3E5F82 (secondary accent, community-verified, links)
+- sand #C9AE82 / sandDark #8F7350 (tertiary accent)
+- brown #4A3423 (neutral accent)
+- line #E4D9C3 (borders/dividers)
+
+## Data model
+Match the Supabase schema exactly (see project docs) — table names: profiles, markets,
+market_photos, confirmations, reviews, saved_markets. Never guess a column name; ask if unsure.
+
+## Conventions
+- Before creating a new component, check `src/components/` for an existing one that fits.
+- One feature/screen per change — keep diffs small and reviewable.
+- Use functional components and hooks only.
+- Prefer Expo SDK packages (expo-location, expo-notifications, expo-image-picker,
+  expo-sharing) over third-party alternatives when Expo has an equivalent.
+- Never hardcode Supabase URL/keys — always read from `process.env.EXPO_PUBLIC_*`.
