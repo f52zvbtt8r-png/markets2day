@@ -9,6 +9,10 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+type DateFilter = 'Today' | 'This weekend' | 'Choose date';
+
+const DATE_FILTERS: DateFilter[] = ['Today', 'This weekend', 'Choose date'];
+
 const CATEGORIES = ['Farmers', 'Flea', 'Vintage', 'Food', 'Artisan', 'Flowers', 'Fashion', 'Seasonal'];
 
 const MIN_RADIUS_KM = 1;
@@ -17,8 +21,21 @@ const MAX_RADIUS_KM = 30;
 export default function MapScreen() {
   const theme = useTheme();
   const safeAreaInsets = useSafeAreaInsets();
-  const [activeCategory, setActiveCategory] = useState('Farmers');
+  const [activeDateFilter, setActiveDateFilter] = useState<DateFilter>('Today');
+  const [activeCategories, setActiveCategories] = useState<Set<string>>(() => new Set(['Farmers']));
   const [radiusKm, setRadiusKm] = useState(15);
+
+  const toggleCategory = (category: string) => {
+    setActiveCategories((current) => {
+      const next = new Set(current);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
 
   const insets = {
     ...safeAreaInsets,
@@ -50,15 +67,32 @@ export default function MapScreen() {
           </Pressable>
         </View>
 
+        <View style={styles.filterRow}>
+          {DATE_FILTERS.map((filter) => {
+            const isActive = filter === activeDateFilter;
+            return (
+              <Pressable key={filter} onPress={() => setActiveDateFilter(filter)}>
+                <ThemedView
+                  type={isActive ? 'accent' : 'backgroundElement'}
+                  style={styles.filterButton}>
+                  <ThemedText type="small" themeColor={isActive ? 'background' : 'text'}>
+                    {filter}
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.categoryScroll}
           contentContainerStyle={styles.categoryRow}>
           {CATEGORIES.map((category) => {
-            const isActive = category === activeCategory;
+            const isActive = activeCategories.has(category);
             return (
-              <Pressable key={category} onPress={() => setActiveCategory(category)}>
+              <Pressable key={category} onPress={() => toggleCategory(category)}>
                 <ThemedView
                   type={isActive ? 'accent' : 'backgroundElement'}
                   style={styles.categoryChip}>
@@ -119,6 +153,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  filterButton: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.five,
   },
   categoryScroll: {
     flexGrow: 0,
