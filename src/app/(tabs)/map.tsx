@@ -6,14 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { CATEGORIES } from '@/constants/categories';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type DateFilter = 'Today' | 'This weekend' | 'Choose date';
 
 const DATE_FILTERS: DateFilter[] = ['Today', 'This weekend', 'Choose date'];
-
-const CATEGORIES = ['Farmers', 'Flea', 'Vintage', 'Food', 'Artisan', 'Flowers', 'Fashion', 'Seasonal'];
 
 const MIN_RADIUS_KM = 1;
 const MAX_RADIUS_KM = 30;
