@@ -1,5 +1,151 @@
-import { ScreenPlaceholder } from '@/components/screen-placeholder';
+import Feather from '@expo/vector-icons/Feather';
+import { Slider } from '@expo/ui/community/slider';
+import { useState } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+
+const CATEGORIES = ['Farmers', 'Flea', 'Vintage', 'Food', 'Artisan', 'Flowers', 'Fashion', 'Seasonal'];
+
+const MIN_RADIUS_KM = 1;
+const MAX_RADIUS_KM = 30;
 
 export default function MapScreen() {
-  return <ScreenPlaceholder title="Map" />;
+  const theme = useTheme();
+  const safeAreaInsets = useSafeAreaInsets();
+  const [activeCategory, setActiveCategory] = useState('Farmers');
+  const [radiusKm, setRadiusKm] = useState(15);
+
+  const insets = {
+    ...safeAreaInsets,
+    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
+  };
+  const contentPlatformStyle = Platform.select({
+    android: {
+      paddingTop: insets.top,
+      paddingLeft: insets.left,
+      paddingRight: insets.right,
+      paddingBottom: insets.bottom,
+    },
+    web: {
+      paddingTop: Spacing.six,
+      paddingBottom: Spacing.four,
+    },
+  });
+
+  return (
+    <ScrollView
+      style={[styles.scrollView, { backgroundColor: theme.background }]}
+      contentInset={insets}
+      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
+      <View style={styles.content}>
+        <View style={styles.locationRow}>
+          <ThemedText type="default">Den Haag, NL</ThemedText>
+          <Pressable hitSlop={Spacing.two}>
+            <Feather name="edit-3" size={14} color={theme.textSecondary} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoryScroll}
+          contentContainerStyle={styles.categoryRow}>
+          {CATEGORIES.map((category) => {
+            const isActive = category === activeCategory;
+            return (
+              <Pressable key={category} onPress={() => setActiveCategory(category)}>
+                <ThemedView
+                  type={isActive ? 'accent' : 'backgroundElement'}
+                  style={styles.categoryChip}>
+                  <ThemedText type="small" themeColor={isActive ? 'background' : 'text'}>
+                    {category}
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.radiusRow}>
+          <ThemedText type="default">Radius</ThemedText>
+          <Slider
+            style={styles.radiusSlider}
+            value={radiusKm}
+            minimumValue={MIN_RADIUS_KM}
+            maximumValue={MAX_RADIUS_KM}
+            step={1}
+            minimumTrackTintColor={theme.accent}
+            onValueChange={setRadiusKm}
+          />
+          <ThemedText type="small" themeColor="textSecondary">
+            {Math.round(radiusKm)} km
+          </ThemedText>
+        </View>
+
+        <ThemedView
+          type="backgroundElement"
+          style={[styles.mapPlaceholder, { borderColor: theme.backgroundSelected }]}>
+          <ThemedText type="default" themeColor="textSecondary">
+            Map preview
+          </ThemedText>
+        </ThemedView>
+      </View>
+    </ScrollView>
+  );
 }
+
+const styles = StyleSheet.create({
+  scrollView: {
+    flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  content: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.four,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  categoryScroll: {
+    flexGrow: 0,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  categoryChip: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.five,
+  },
+  radiusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  radiusSlider: {
+    flex: 1,
+  },
+  mapPlaceholder: {
+    flex: 1,
+    minHeight: 200,
+    borderRadius: Spacing.three,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
