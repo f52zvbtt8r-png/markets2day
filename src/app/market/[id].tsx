@@ -1,11 +1,12 @@
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { StampBadge } from '@/components/stamp-badge';
+import { StampBadge, type StampStatus } from '@/components/stamp-badge';
 import { ThemedText } from '@/components/themed-text';
+import { ThemedTextInput } from '@/components/themed-text-input';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts, MaxContentWidth, Spacing, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -29,187 +30,387 @@ const MARKET = {
 };
 
 const PHOTO_COLORS: ThemeColor[] = ['accent', 'info', 'tertiary'];
+const COMMUNITY_VERIFIED_THRESHOLD = 3;
+const TOAST_DURATION_MS = 2000;
+const STARS = [1, 2, 3, 4, 5];
 
 type Tab = 'info' | 'reviews';
+
+type Review = {
+  id: number;
+  author: string;
+  rating: number;
+  text: string;
+  isAnonymous: boolean;
+};
 
 export default function MarketDetailScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<Tab>('info');
 
+  const [confirmations, setConfirmations] = useState(MARKET.confirmations);
+  const [lastConfirmed, setLastConfirmed] = useState(MARKET.lastConfirmed);
+  const [status, setStatus] = useState<StampStatus>(MARKET.status);
+  const [isSaved, setIsSaved] = useState(false);
+
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [draftRating, setDraftRating] = useState(0);
+  const [draftText, setDraftText] = useState('');
+  const [draftIsAnonymous, setDraftIsAnonymous] = useState(false);
+  const nextReviewId = useRef(0);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const showToast = (message: string) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToastMessage(message);
+    toastTimeoutRef.current = setTimeout(() => setToastMessage(null), TOAST_DURATION_MS);
+  };
+
+  const handleConfirm = () => {
+    setConfirmations((current) => {
+      const next = current + 1;
+      if (status === 'pending' && next >= COMMUNITY_VERIFIED_THRESHOLD) {
+        setStatus('community_verified');
+      }
+      return next;
+    });
+    setLastConfirmed('today');
+    showToast('Thanks for confirming — count updated');
+  };
+
+  const handleToggleSave = () => {
+    setIsSaved((current) => {
+      const next = !current;
+      showToast(next ? 'Saved! Reminder set.' : 'Removed from saved');
+      return next;
+    });
+  };
+
+  const handleShare = () => {
+    showToast('Opening WhatsApp to share this market…');
+  };
+
+  const handlePostReview = () => {
+    if (draftRating === 0) {
+      return;
+    }
+    setReviews((current) => [
+      {
+        id: nextReviewId.current++,
+        author: draftIsAnonymous ? 'Anonymous' : 'You',
+        rating: draftRating,
+        text: draftText.trim(),
+        isAnonymous: draftIsAnonymous,
+      },
+      ...current,
+    ]);
+    setDraftRating(0);
+    setDraftText('');
+    setDraftIsAnonymous(false);
+  };
+
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentContainerStyle={[
-        styles.contentContainer,
-        { paddingBottom: insets.bottom + Spacing.four },
-      ]}>
-      <View style={styles.content}>
-        <View style={styles.photoRow}>
-          {PHOTO_COLORS.map((color) => (
-            <ThemedView key={color} type={color} style={styles.photoBox}>
-              <Feather name="camera" size={22} color={theme.background} />
-            </ThemedView>
-          ))}
-        </View>
-
-        <View style={styles.titleRow}>
-          <ThemedText type="default" style={styles.titleText}>
-            {MARKET.name}
-          </ThemedText>
-          <View style={styles.titleActions}>
-            <Pressable hitSlop={Spacing.two}>
-              <Feather name="share-2" size={20} color={theme.textSecondary} />
-            </Pressable>
-            <Pressable hitSlop={Spacing.two}>
-              <Feather name="heart" size={20} color={theme.textSecondary} />
-            </Pressable>
+    <View style={styles.screen}>
+      <ScrollView
+        style={[styles.scrollView, { backgroundColor: theme.background }]}
+        contentContainerStyle={[
+          styles.contentContainer,
+          { paddingBottom: insets.bottom + Spacing.four },
+        ]}>
+        <View style={styles.content}>
+          <View style={styles.photoRow}>
+            {PHOTO_COLORS.map((color) => (
+              <ThemedView key={color} type={color} style={styles.photoBox}>
+                <Feather name="camera" size={22} color={theme.background} />
+              </ThemedView>
+            ))}
           </View>
-        </View>
 
-        <View style={styles.chipRow}>
-          {[...MARKET.categories, MARKET.setting].map((label) => (
-            <ThemedView key={label} type="backgroundElement" style={styles.chip}>
+          <View style={styles.titleRow}>
+            <ThemedText type="default" style={styles.titleText}>
+              {MARKET.name}
+            </ThemedText>
+            <View style={styles.titleActions}>
+              <Pressable hitSlop={Spacing.two} onPress={handleShare}>
+                <Feather name="share-2" size={20} color={theme.textSecondary} />
+              </Pressable>
+              <Pressable hitSlop={Spacing.two} onPress={handleToggleSave}>
+                <MaterialCommunityIcons
+                  name={isSaved ? 'heart' : 'heart-outline'}
+                  size={20}
+                  color={isSaved ? theme.accent : theme.textSecondary}
+                />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.chipRow}>
+            {[...MARKET.categories, MARKET.setting].map((label) => (
+              <ThemedView key={label} type="backgroundElement" style={styles.chip}>
+                <ThemedText type="small" themeColor="text">
+                  {label}
+                </ThemedText>
+              </ThemedView>
+            ))}
+          </View>
+
+          <StampBadge status={status} />
+
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <Feather name="star" size={16} color={theme.accent} />
               <ThemedText type="small" themeColor="text">
-                {label}
-              </ThemedText>
-            </ThemedView>
-          ))}
-        </View>
-
-        <StampBadge status={MARKET.status} />
-
-        <View style={styles.infoRow}>
-          <View style={styles.infoItem}>
-            <Feather name="star" size={16} color={theme.accent} />
-            <ThemedText type="small" themeColor="text">
-              {MARKET.rating.toFixed(1)}
-            </ThemedText>
-          </View>
-          <View style={styles.infoItem}>
-            <ThemedText type="small" themeColor="textSecondary">
-              👥 {MARKET.confirmations} confirmations
-            </ThemedText>
-          </View>
-          <View style={styles.infoItem}>
-            <View style={[styles.confirmedDot, { backgroundColor: theme.info }]} />
-            <ThemedText type="small" themeColor="textSecondary">
-              confirmed {MARKET.lastConfirmed}
-            </ThemedText>
-          </View>
-        </View>
-
-        <View style={styles.actionsRow}>
-          <Pressable style={styles.actionButtonWrapper}>
-            <ThemedView type="accent" style={styles.primaryButton}>
-              <ThemedText type="default" themeColor="background" style={styles.actionButtonText}>
-                Navigate
-              </ThemedText>
-            </ThemedView>
-          </Pressable>
-          <Pressable style={styles.actionButtonWrapper}>
-            <ThemedView
-              type="background"
-              style={[styles.secondaryButton, { borderColor: theme.accent }]}>
-              <ThemedText type="default" themeColor="accent" style={styles.actionButtonText}>
-                Confirm active
-              </ThemedText>
-            </ThemedView>
-          </Pressable>
-        </View>
-
-        <View style={[styles.tabRow, { borderBottomColor: theme.backgroundSelected }]}>
-          <Pressable onPress={() => setActiveTab('info')} style={styles.tabButton}>
-            <ThemedText
-              type={activeTab === 'info' ? 'smallBold' : 'small'}
-              themeColor={activeTab === 'info' ? 'text' : 'textSecondary'}
-              style={
-                activeTab === 'info' && [styles.tabButtonActive, { borderBottomColor: theme.accent }]
-              }>
-              Info
-            </ThemedText>
-          </Pressable>
-          <Pressable onPress={() => setActiveTab('reviews')} style={styles.tabButton}>
-            <ThemedText
-              type={activeTab === 'reviews' ? 'smallBold' : 'small'}
-              themeColor={activeTab === 'reviews' ? 'text' : 'textSecondary'}
-              style={
-                activeTab === 'reviews' && [
-                  styles.tabButtonActive,
-                  { borderBottomColor: theme.accent },
-                ]
-              }>
-              Reviews (0)
-            </ThemedText>
-          </Pressable>
-        </View>
-
-        {activeTab === 'info' ? (
-          <View style={styles.infoTab}>
-            <ThemedText type="default" themeColor="text">
-              {MARKET.description}
-            </ThemedText>
-
-            <View style={styles.detailRow}>
-              <Feather name="clock" size={16} color={theme.textSecondary} />
-              <ThemedText type="small" themeColor="textSecondary">
-                {MARKET.recurring}, {MARKET.time}
+                {MARKET.rating.toFixed(1)}
               </ThemedText>
             </View>
-
-            <View style={styles.detailRow}>
-              <Feather name="map-pin" size={16} color={theme.textSecondary} />
+            <View style={styles.infoItem}>
               <ThemedText type="small" themeColor="textSecondary">
-                {MARKET.entry} entry · {MARKET.distance} away
+                👥 {confirmations} confirmations
               </ThemedText>
             </View>
-
-            <View style={styles.detailRow}>
-              <MaterialCommunityIcons name="dog" size={16} color={theme.textSecondary} />
+            <View style={styles.infoItem}>
+              <View style={[styles.confirmedDot, { backgroundColor: theme.info }]} />
               <ThemedText type="small" themeColor="textSecondary">
-                {MARKET.dogsAllowed ? 'Dogs allowed' : 'No dogs allowed'}
+                confirmed {lastConfirmed}
               </ThemedText>
             </View>
+          </View>
 
-            <View style={styles.linkRow}>
-              <Pressable style={styles.linkItem}>
-                <Feather name="globe" size={16} color={theme.accent} />
-                <ThemedText type="small" themeColor="accent">
-                  Website
+          <View style={styles.actionsRow}>
+            <Pressable style={styles.actionButtonWrapper}>
+              <ThemedView type="accent" style={styles.primaryButton}>
+                <ThemedText type="default" themeColor="background" style={styles.actionButtonText}>
+                  Navigate
                 </ThemedText>
-              </Pressable>
-              <Pressable style={styles.linkItem}>
-                <Feather name="instagram" size={16} color={theme.accent} />
-                <ThemedText type="small" themeColor="accent">
-                  Instagram
+              </ThemedView>
+            </Pressable>
+            <Pressable style={styles.actionButtonWrapper} onPress={handleConfirm}>
+              <ThemedView
+                type="background"
+                style={[styles.secondaryButton, { borderColor: theme.accent }]}>
+                <ThemedText type="default" themeColor="accent" style={styles.actionButtonText}>
+                  Confirm active
                 </ThemedText>
-              </Pressable>
-            </View>
+              </ThemedView>
+            </Pressable>
+          </View>
 
-            <Pressable>
-              <ThemedText type="small" themeColor="accent">
-                Are you the organiser? Claim this market
+          <View style={[styles.tabRow, { borderBottomColor: theme.backgroundSelected }]}>
+            <Pressable onPress={() => setActiveTab('info')} style={styles.tabButton}>
+              <ThemedText
+                type={activeTab === 'info' ? 'smallBold' : 'small'}
+                themeColor={activeTab === 'info' ? 'text' : 'textSecondary'}
+                style={
+                  activeTab === 'info' && [
+                    styles.tabButtonActive,
+                    { borderBottomColor: theme.accent },
+                  ]
+                }>
+                Info
               </ThemedText>
             </Pressable>
-
-            <Pressable style={styles.reportRow}>
-              <Feather name="flag" size={14} color={theme.textSecondary} />
-              <ThemedText type="small" themeColor="textSecondary">
-                Report incorrect info
+            <Pressable onPress={() => setActiveTab('reviews')} style={styles.tabButton}>
+              <ThemedText
+                type={activeTab === 'reviews' ? 'smallBold' : 'small'}
+                themeColor={activeTab === 'reviews' ? 'text' : 'textSecondary'}
+                style={
+                  activeTab === 'reviews' && [
+                    styles.tabButtonActive,
+                    { borderBottomColor: theme.accent },
+                  ]
+                }>
+                Reviews ({reviews.length})
               </ThemedText>
             </Pressable>
           </View>
-        ) : (
-          <ThemedText type="default" themeColor="textSecondary">
-            No reviews yet — be the first to share your experience.
-          </ThemedText>
-        )}
-      </View>
-    </ScrollView>
+
+          {activeTab === 'info' ? (
+            <View style={styles.infoTab}>
+              <ThemedText type="default" themeColor="text">
+                {MARKET.description}
+              </ThemedText>
+
+              <View style={styles.detailRow}>
+                <Feather name="clock" size={16} color={theme.textSecondary} />
+                <ThemedText type="small" themeColor="textSecondary">
+                  {MARKET.recurring}, {MARKET.time}
+                </ThemedText>
+              </View>
+
+              <View style={styles.detailRow}>
+                <Feather name="map-pin" size={16} color={theme.textSecondary} />
+                <ThemedText type="small" themeColor="textSecondary">
+                  {MARKET.entry} entry · {MARKET.distance} away
+                </ThemedText>
+              </View>
+
+              <View style={styles.detailRow}>
+                <MaterialCommunityIcons name="dog" size={16} color={theme.textSecondary} />
+                <ThemedText type="small" themeColor="textSecondary">
+                  {MARKET.dogsAllowed ? 'Dogs allowed' : 'No dogs allowed'}
+                </ThemedText>
+              </View>
+
+              <View style={styles.linkRow}>
+                <Pressable style={styles.linkItem}>
+                  <Feather name="globe" size={16} color={theme.accent} />
+                  <ThemedText type="small" themeColor="accent">
+                    Website
+                  </ThemedText>
+                </Pressable>
+                <Pressable style={styles.linkItem}>
+                  <Feather name="instagram" size={16} color={theme.accent} />
+                  <ThemedText type="small" themeColor="accent">
+                    Instagram
+                  </ThemedText>
+                </Pressable>
+              </View>
+
+              <Pressable>
+                <ThemedText type="small" themeColor="accent">
+                  Are you the organiser? Claim this market
+                </ThemedText>
+              </Pressable>
+
+              <Pressable style={styles.reportRow}>
+                <Feather name="flag" size={14} color={theme.textSecondary} />
+                <ThemedText type="small" themeColor="textSecondary">
+                  Report incorrect info
+                </ThemedText>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.reviewsTab}>
+              <View style={styles.reviewForm}>
+                <View style={styles.starPickerRow}>
+                  {STARS.map((star) => (
+                    <Pressable key={star} onPress={() => setDraftRating(star)} hitSlop={Spacing.one}>
+                      <MaterialCommunityIcons
+                        name={star <= draftRating ? 'star' : 'star-outline'}
+                        size={26}
+                        color={star <= draftRating ? theme.accent : theme.textSecondary}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+
+                <ThemedTextInput
+                  multiline
+                  numberOfLines={3}
+                  value={draftText}
+                  onChangeText={setDraftText}
+                  placeholder="What was it like? Any tips for other visitors?"
+                />
+
+                <View style={styles.anonymousGroup}>
+                  <Pressable
+                    style={styles.anonymousRow}
+                    onPress={() => setDraftIsAnonymous((current) => !current)}>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        {
+                          borderColor: draftIsAnonymous ? theme.accent : theme.backgroundSelected,
+                          backgroundColor: draftIsAnonymous ? theme.accent : theme.backgroundElement,
+                        },
+                      ]}>
+                      {draftIsAnonymous && (
+                        <Feather name="check" size={12} color={theme.background} />
+                      )}
+                    </View>
+                    <ThemedText type="default" themeColor="text">
+                      Post anonymously
+                    </ThemedText>
+                  </Pressable>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Your name won&apos;t be shown publicly, but this still counts toward your
+                    contributor points.
+                  </ThemedText>
+                </View>
+
+                <Pressable onPress={handlePostReview} disabled={draftRating === 0}>
+                  <ThemedView
+                    type="accent"
+                    style={[styles.postReviewButton, draftRating === 0 && styles.disabledButton]}>
+                    <ThemedText
+                      type="default"
+                      themeColor="background"
+                      style={styles.actionButtonText}>
+                      Post review
+                    </ThemedText>
+                  </ThemedView>
+                </Pressable>
+              </View>
+
+              {reviews.length === 0 ? (
+                <ThemedText type="default" themeColor="textSecondary">
+                  No reviews yet — be the first to share your experience.
+                </ThemedText>
+              ) : (
+                <View style={styles.reviewList}>
+                  {reviews.map((review) => (
+                    <View key={review.id} style={styles.reviewCard}>
+                      <View style={styles.reviewHeader}>
+                        <ThemedText type="smallBold" themeColor="text">
+                          {review.author}
+                        </ThemedText>
+                        <View style={styles.reviewStars}>
+                          {STARS.map((star) => (
+                            <MaterialCommunityIcons
+                              key={star}
+                              name={star <= review.rating ? 'star' : 'star-outline'}
+                              size={14}
+                              color={theme.accent}
+                            />
+                          ))}
+                        </View>
+                      </View>
+                      {review.text.length > 0 && (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {review.text}
+                        </ThemedText>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {toastMessage && (
+        <View
+          style={[styles.toastWrapper, { bottom: insets.bottom + Spacing.three }]}
+          pointerEvents="none">
+          <View style={[styles.toast, { backgroundColor: theme.text }]}>
+            <ThemedText type="small" themeColor="background">
+              {toastMessage}
+            </ThemedText>
+          </View>
+        </View>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
   scrollView: {
     flex: 1,
   },
@@ -330,5 +531,67 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
+  },
+  reviewsTab: {
+    gap: Spacing.four,
+  },
+  reviewForm: {
+    gap: Spacing.three,
+  },
+  starPickerRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  anonymousGroup: {
+    gap: Spacing.one,
+  },
+  anonymousRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: Spacing.one,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postReviewButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  reviewList: {
+    gap: Spacing.three,
+  },
+  reviewCard: {
+    gap: Spacing.one,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  reviewStars: {
+    flexDirection: 'row',
+    gap: Spacing.half,
+  },
+  toastWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.four,
+  },
+  toast: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.five,
   },
 });
