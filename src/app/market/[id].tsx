@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,8 +8,10 @@ import { StampBadge, type StampStatus } from '@/components/stamp-badge';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedTextInput } from '@/components/themed-text-input';
 import { ThemedView } from '@/components/themed-view';
+import { Toast } from '@/components/toast';
 import { Fonts, MaxContentWidth, Spacing, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useToast } from '@/hooks/use-toast';
 
 const MARKET = {
   name: 'De Haagse Markt',
@@ -31,7 +33,6 @@ const MARKET = {
 
 const PHOTO_COLORS: ThemeColor[] = ['accent', 'info', 'tertiary'];
 const COMMUNITY_VERIFIED_THRESHOLD = 3;
-const TOAST_DURATION_MS = 2000;
 const STARS = [1, 2, 3, 4, 5];
 
 type Tab = 'info' | 'reviews';
@@ -67,24 +68,7 @@ export default function MarketDetailScreen() {
   const [claimNotes, setClaimNotes] = useState('');
   const [claimConfirmed, setClaimConfirmed] = useState(false);
 
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const showToast = (message: string) => {
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-    setToastMessage(message);
-    toastTimeoutRef.current = setTimeout(() => setToastMessage(null), TOAST_DURATION_MS);
-  };
+  const { toastMessage, showToast } = useToast();
 
   const handleConfirm = () => {
     setConfirmations((current) => {
@@ -478,17 +462,7 @@ export default function MarketDetailScreen() {
         </View>
       </ScrollView>
 
-      {toastMessage && (
-        <View
-          style={[styles.toastWrapper, { bottom: insets.bottom + Spacing.three }]}
-          pointerEvents="none">
-          <View style={[styles.toast, { backgroundColor: theme.text }]}>
-            <ThemedText type="small" themeColor="background">
-              {toastMessage}
-            </ThemedText>
-          </View>
-        </View>
-      )}
+      <Toast message={toastMessage} bottom={insets.bottom + Spacing.three} />
     </View>
   );
 }
@@ -670,17 +644,5 @@ const styles = StyleSheet.create({
   reviewStars: {
     flexDirection: 'row',
     gap: Spacing.half,
-  },
-  toastWrapper: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-  },
-  toast: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    borderRadius: Spacing.five,
   },
 });
