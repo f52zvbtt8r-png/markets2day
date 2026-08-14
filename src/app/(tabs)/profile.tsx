@@ -1,5 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,6 +37,16 @@ const BADGES: Badge[] = [
     earned: false,
     status: 'pending',
   },
+];
+
+type ManagedMarket = {
+  id: string;
+  name: string;
+};
+
+const MY_MARKETS: ManagedMarket[] = [
+  { id: '1', name: 'Grote Markt Vlooienmarkt' },
+  { id: '2', name: 'De Haagse Markt' },
 ];
 
 type SavedMarket = {
@@ -87,6 +98,7 @@ const STARS = [1, 2, 3, 4, 5];
 
 export default function ProfileScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const safeAreaInsets = useSafeAreaInsets();
   const [reviewsExpanded, setReviewsExpanded] = useState(false);
 
@@ -147,6 +159,26 @@ export default function ProfileScreen() {
                   {badge.description}
                 </ThemedText>
               </ThemedView>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText type="smallBold">My markets</ThemedText>
+          <View style={styles.list}>
+            {MY_MARKETS.map((market) => (
+              <Pressable
+                key={market.id}
+                onPress={() =>
+                  router.push({ pathname: '/market/[id]/manage', params: { id: market.id } })
+                }>
+                <ThemedView type="backgroundElement" style={styles.savedRow}>
+                  <ThemedText type="default" themeColor="text">
+                    {market.name}
+                  </ThemedText>
+                  <Feather name="chevron-right" size={18} color={theme.textSecondary} />
+                </ThemedView>
+              </Pressable>
             ))}
           </View>
         </View>

@@ -60,6 +60,13 @@ export default function MarketDetailScreen() {
   const [draftIsAnonymous, setDraftIsAnonymous] = useState(false);
   const nextReviewId = useRef(0);
 
+  const [isClaimFormOpen, setIsClaimFormOpen] = useState(false);
+  const [isClaimed, setIsClaimed] = useState(false);
+  const [claimName, setClaimName] = useState('');
+  const [claimEmail, setClaimEmail] = useState('');
+  const [claimNotes, setClaimNotes] = useState('');
+  const [claimConfirmed, setClaimConfirmed] = useState(false);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -120,6 +127,21 @@ export default function MarketDetailScreen() {
     setDraftRating(0);
     setDraftText('');
     setDraftIsAnonymous(false);
+  };
+
+  const canSubmitClaim =
+    claimName.trim().length > 0 &&
+    claimEmail.trim().length > 0 &&
+    claimNotes.trim().length > 0 &&
+    claimConfirmed;
+
+  const handleSubmitClaim = () => {
+    if (!canSubmitClaim) {
+      return;
+    }
+    setIsClaimed(true);
+    setIsClaimFormOpen(false);
+    setStatus('organiser_verified');
   };
 
   return (
@@ -279,11 +301,75 @@ export default function MarketDetailScreen() {
                 </Pressable>
               </View>
 
-              <Pressable>
-                <ThemedText type="small" themeColor="accent">
-                  Are you the organiser? Claim this market
+              {isClaimed ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  Claim submitted! Check your email to set up your organiser profile and start
+                  managing this market.
                 </ThemedText>
-              </Pressable>
+              ) : isClaimFormOpen ? (
+                <View style={styles.claimForm}>
+                  <ThemedTextInput
+                    value={claimName}
+                    onChangeText={setClaimName}
+                    placeholder="Your name"
+                  />
+                  <ThemedTextInput
+                    value={claimEmail}
+                    onChangeText={setClaimEmail}
+                    placeholder="Your email"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                  <ThemedTextInput
+                    multiline
+                    numberOfLines={3}
+                    value={claimNotes}
+                    onChangeText={setClaimNotes}
+                    placeholder="How are you connected to this market?"
+                  />
+
+                  <Pressable
+                    style={styles.anonymousRow}
+                    onPress={() => setClaimConfirmed((current) => !current)}>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        {
+                          borderColor: claimConfirmed ? theme.accent : theme.backgroundSelected,
+                          backgroundColor: claimConfirmed
+                            ? theme.accent
+                            : theme.backgroundElement,
+                        },
+                      ]}>
+                      {claimConfirmed && (
+                        <Feather name="check" size={12} color={theme.background} />
+                      )}
+                    </View>
+                    <ThemedText type="default" themeColor="text">
+                      I confirm this information is accurate
+                    </ThemedText>
+                  </Pressable>
+
+                  <Pressable onPress={handleSubmitClaim} disabled={!canSubmitClaim}>
+                    <ThemedView
+                      type="accent"
+                      style={[styles.postReviewButton, !canSubmitClaim && styles.disabledButton]}>
+                      <ThemedText
+                        type="default"
+                        themeColor="background"
+                        style={styles.actionButtonText}>
+                        Submit claim
+                      </ThemedText>
+                    </ThemedView>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable onPress={() => setIsClaimFormOpen(true)}>
+                  <ThemedText type="small" themeColor="accent">
+                    Are you the organiser? Claim this market
+                  </ThemedText>
+                </Pressable>
+              )}
 
               <Pressable style={styles.reportRow}>
                 <Feather name="flag" size={14} color={theme.textSecondary} />
@@ -531,6 +617,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
+  },
+  claimForm: {
+    gap: Spacing.three,
   },
   reviewsTab: {
     gap: Spacing.four,
