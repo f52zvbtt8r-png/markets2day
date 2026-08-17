@@ -1,6 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,23 +13,25 @@ import { Toast } from '@/components/toast';
 import { Fonts, MaxContentWidth, Spacing, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabase';
 
-const MARKET = {
-  name: 'De Haagse Markt',
-  categories: ['Farmers', 'Food'],
-  setting: 'Outdoor',
-  description:
-    'One of the largest street markets in Europe. Fresh produce, spices, textiles and street food stalls stretching for blocks.',
-  recurring: 'Every Tue, Wed, Fri & Sat',
-  time: '9:00–17:00',
-  entry: 'Free',
-  dogsAllowed: true,
-  organiser: null,
-  status: 'pending' as const,
-  confirmations: 4,
-  lastConfirmed: 'today',
-  rating: 4.6,
-  distance: '1.2 km',
+type MarketRow = {
+  id: string;
+  name: string;
+  categories: string[] | null;
+  indoor_outdoor: string | null;
+  description: string | null;
+  opening_days: string | null;
+  opening_times: string | null;
+  extra_info: string | null;
+  entry_free: boolean;
+  entry_price: string | null;
+  dogs_allowed: boolean | null;
+  dogs_comment: string | null;
+  website_url: string | null;
+  instagram_url: string | null;
+  status: StampStatus;
+  confirmation_count: number;
 };
 
 const PHOTO_COLORS: ThemeColor[] = ['accent', 'info', 'tertiary'];
@@ -48,11 +51,17 @@ type Review = {
 export default function MarketDetailScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  const [market, setMarket] = useState<MarketRow | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
   const [activeTab, setActiveTab] = useState<Tab>('info');
 
-  const [confirmations, setConfirmations] = useState(MARKET.confirmations);
-  const [lastConfirmed, setLastConfirmed] = useState(MARKET.lastConfirmed);
-  const [status, setStatus] = useState<StampStatus>(MARKET.status);
+  const [confirmations, setConfirmations] = useState(0);
+  const [lastConfirmed, setLastConfirmed] = useState('');
+  const [status, setStatus] = useState<StampStatus>('pending');
   const [isSaved, setIsSaved] = useState(false);
 
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -69,6 +78,39 @@ export default function MarketDetailScreen() {
   const [claimConfirmed, setClaimConfirmed] = useState(false);
 
   const { toastMessage, showToast } = useToast();
+
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+    let cancelled = false;
+    setIsLoading(true);
+    setNotFound(false);
+    supabase
+      .from('markets')
+      .select(
+        'id, name, categories, indoor_outdoor, description, opening_days, opening_times, extra_info, entry_free, entry_price, dogs_allowed, dogs_comment, website_url, instagram_url, status, confirmation_count'
+      )
+      .eq('id', id)
+      .single()
+      .then(({ data, error }) => {
+        if (cancelled) {
+          return;
+        }
+        if (error || !data) {
+          setNotFound(true);
+          setIsLoading(false);
+          return;
+        }
+        setMarket(data);
+        setConfirmations(data.confirmation_count);
+        setStatus(data.status);
+        setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const handleConfirm = () => {
     setConfirmations((current) => {
@@ -128,6 +170,33 @@ export default function MarketDetailScreen() {
     setStatus('organiser_verified');
   };
 
+  if (isLoading) {
+    return (
+      <View style={[styles.screen, styles.centered, { backgroundColor: theme.background }]}>
+        <ThemedText type="default" themeColor="textSecondary">
+          Loading market…
+        </ThemedText>
+      </View>
+    );
+  }
+
+  if (notFound || !market) {
+    return (
+      <View style={[styles.screen, styles.centered, { backgroundColor: theme.background }]}>
+        <ThemedText type="default" themeColor="textSecondary">
+          Market not found.
+        </ThemedText>
+      </View>
+    );
+  }
+
+  const chips = [...(market.categories ?? []), market.indoor_outdoor].filter(
+    (value): value is string => Boolean(value)
+  );
+  const bodyText = market.description || market.extra_info || '';
+  const hasOpeningInfo = Boolean(market.opening_days || market.opening_times);
+  const hasLinks = Boolean(market.website_url || market.instagram_url);
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -147,7 +216,7 @@ export default function MarketDetailScreen() {
 
           <View style={styles.titleRow}>
             <ThemedText type="default" style={styles.titleText}>
-              {MARKET.name}
+              {market.name}
             </ThemedText>
             <View style={styles.titleActions}>
               <Pressable hitSlop={Spacing.two} onPress={handleShare}>
@@ -163,36 +232,34 @@ export default function MarketDetailScreen() {
             </View>
           </View>
 
-          <View style={styles.chipRow}>
-            {[...MARKET.categories, MARKET.setting].map((label) => (
-              <ThemedView key={label} type="backgroundElement" style={styles.chip}>
-                <ThemedText type="small" themeColor="text">
-                  {label}
-                </ThemedText>
-              </ThemedView>
-            ))}
-          </View>
+          {chips.length > 0 && (
+            <View style={styles.chipRow}>
+              {chips.map((label) => (
+                <ThemedView key={label} type="backgroundElement" style={styles.chip}>
+                  <ThemedText type="small" themeColor="text">
+                    {label}
+                  </ThemedText>
+                </ThemedView>
+              ))}
+            </View>
+          )}
 
           <StampBadge status={status} />
 
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
-              <Feather name="star" size={16} color={theme.accent} />
-              <ThemedText type="small" themeColor="text">
-                {MARKET.rating.toFixed(1)}
-              </ThemedText>
-            </View>
-            <View style={styles.infoItem}>
               <ThemedText type="small" themeColor="textSecondary">
                 👥 {confirmations} confirmations
               </ThemedText>
             </View>
-            <View style={styles.infoItem}>
-              <View style={[styles.confirmedDot, { backgroundColor: theme.infoDark }]} />
-              <ThemedText type="small" themeColor="textSecondary">
-                confirmed {lastConfirmed}
-              </ThemedText>
-            </View>
+            {lastConfirmed.length > 0 && (
+              <View style={styles.infoItem}>
+                <View style={[styles.confirmedDot, { backgroundColor: theme.infoDark }]} />
+                <ThemedText type="small" themeColor="textSecondary">
+                  confirmed {lastConfirmed}
+                </ThemedText>
+              </View>
+            )}
           </View>
 
           <View style={styles.actionsRow}>
@@ -245,45 +312,57 @@ export default function MarketDetailScreen() {
 
           {activeTab === 'info' ? (
             <View style={styles.infoTab}>
-              <ThemedText type="default" themeColor="text">
-                {MARKET.description}
-              </ThemedText>
-
-              <View style={styles.detailRow}>
-                <Feather name="clock" size={16} color={theme.textSecondary} />
-                <ThemedText type="small" themeColor="textSecondary">
-                  {MARKET.recurring}, {MARKET.time}
+              {bodyText.length > 0 && (
+                <ThemedText type="default" themeColor="text">
+                  {bodyText}
                 </ThemedText>
-              </View>
+              )}
+
+              {hasOpeningInfo && (
+                <View style={styles.detailRow}>
+                  <Feather name="clock" size={16} color={theme.textSecondary} />
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {[market.opening_days, market.opening_times].filter(Boolean).join(', ')}
+                  </ThemedText>
+                </View>
+              )}
 
               <View style={styles.detailRow}>
                 <Feather name="map-pin" size={16} color={theme.textSecondary} />
                 <ThemedText type="small" themeColor="textSecondary">
-                  {MARKET.entry} entry · {MARKET.distance} away
+                  {market.entry_free ? 'Free' : 'Paid'} entry · — away
                 </ThemedText>
               </View>
 
-              <View style={styles.detailRow}>
-                <MaterialCommunityIcons name="dog" size={16} color={theme.textSecondary} />
-                <ThemedText type="small" themeColor="textSecondary">
-                  {MARKET.dogsAllowed ? 'Dogs allowed' : 'No dogs allowed'}
-                </ThemedText>
-              </View>
+              {market.dogs_allowed !== null && (
+                <View style={styles.detailRow}>
+                  <MaterialCommunityIcons name="dog" size={16} color={theme.textSecondary} />
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {market.dogs_allowed ? 'Dogs allowed' : 'No dogs allowed'}
+                  </ThemedText>
+                </View>
+              )}
 
-              <View style={styles.linkRow}>
-                <Pressable style={styles.linkItem}>
-                  <Feather name="globe" size={16} color={theme.accent} />
-                  <ThemedText type="small" themeColor="accent">
-                    Website
-                  </ThemedText>
-                </Pressable>
-                <Pressable style={styles.linkItem}>
-                  <Feather name="instagram" size={16} color={theme.accent} />
-                  <ThemedText type="small" themeColor="accent">
-                    Instagram
-                  </ThemedText>
-                </Pressable>
-              </View>
+              {hasLinks && (
+                <View style={styles.linkRow}>
+                  {market.website_url && (
+                    <Pressable style={styles.linkItem}>
+                      <Feather name="globe" size={16} color={theme.accent} />
+                      <ThemedText type="small" themeColor="accent">
+                        Website
+                      </ThemedText>
+                    </Pressable>
+                  )}
+                  {market.instagram_url && (
+                    <Pressable style={styles.linkItem}>
+                      <Feather name="instagram" size={16} color={theme.accent} />
+                      <ThemedText type="small" themeColor="accent">
+                        Instagram
+                      </ThemedText>
+                    </Pressable>
+                  )}
+                </View>
+              )}
 
               {isClaimed ? (
                 <ThemedText type="small" themeColor="textSecondary">
@@ -470,6 +549,10 @@ export default function MarketDetailScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollView: {
     flex: 1,

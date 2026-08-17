@@ -1,52 +1,58 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { StampBadge, type StampStatus } from '@/components/stamp-badge';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Fonts, MaxContentWidth, Spacing, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { supabase } from '@/lib/supabase';
 
 type Filter = 'Today' | 'This weekend' | 'Choose date';
 
 const FILTERS: Filter[] = ['Today', 'This weekend', 'Choose date'];
 
-type Market = {
+const CARD_COLORS: ThemeColor[] = ['accent', 'info', 'tertiary'];
+
+type MarketListItem = {
   id: string;
   name: string;
-  color: ThemeColor;
-  distance: string;
-  price: string;
-  day: string;
+  categories: string[] | null;
+  status: StampStatus;
+  entry_free: boolean;
 };
-
-const MARKETS: Market[] = [
-  { id: '1', name: 'Grote Markt', color: 'accent', distance: '1.2 km', price: 'Free', day: 'Today' },
-  {
-    id: '2',
-    name: 'Zeeheldenkwartier Market',
-    color: 'info',
-    distance: '2.5 km',
-    price: '€2',
-    day: 'Today',
-  },
-  {
-    id: '3',
-    name: 'Vlooienmarkt Vrijenban',
-    color: 'tertiary',
-    distance: '4.8 km',
-    price: 'Free',
-    day: 'Saturday',
-  },
-];
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const safeAreaInsets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState<Filter>('Today');
+  const [markets, setMarkets] = useState<MarketListItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    supabase
+      .from('markets')
+      .select('id, name, categories, status, entry_free')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (cancelled) {
+          return;
+        }
+        if (!error && data) {
+          setMarkets(data);
+        }
+        setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const insets = {
     ...safeAreaInsets,
@@ -99,39 +105,57 @@ export default function HomeScreen() {
           })}
         </View>
 
-        <View style={styles.list}>
-          {MARKETS.map((market) => (
-            <Pressable
-              key={market.id}
-              onPress={() => router.push({ pathname: '/market/[id]', params: { id: market.id } })}>
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <ThemedView type={market.color} style={styles.cardIcon} />
-                <View style={styles.cardContent}>
-                  <ThemedText type="default" style={styles.cardTitle}>
-                    {market.name}
-                  </ThemedText>
-                  <View style={styles.cardMetaRow}>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {market.distance}
+        {isLoading ? (
+          <ThemedText type="default" themeColor="textSecondary">
+            Loading markets…
+          </ThemedText>
+        ) : markets.length === 0 ? (
+          <ThemedText type="default" themeColor="textSecondary">
+            No markets yet — be the first to add one!
+          </ThemedText>
+        ) : (
+          <View style={styles.list}>
+            {markets.map((market, index) => (
+              <Pressable
+                key={market.id}
+                onPress={() =>
+                  router.push({ pathname: '/market/[id]', params: { id: market.id } })
+                }>
+                <ThemedView type="backgroundElement" style={styles.card}>
+                  <ThemedView
+                    type={CARD_COLORS[index % CARD_COLORS.length]}
+                    style={styles.cardIcon}
+                  />
+                  <View style={styles.cardContent}>
+                    <ThemedText type="default" style={styles.cardTitle}>
+                      {market.name}
                     </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      ·
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {market.price}
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      ·
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {market.day}
-                    </ThemedText>
+                    <StampBadge status={market.status} />
+                    <View style={styles.cardMetaRow}>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {market.categories && market.categories.length > 0
+                          ? market.categories.join(', ')
+                          : '—'}
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        ·
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {market.entry_free ? 'Free' : 'Paid'}
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        ·
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        —
+                      </ThemedText>
+                    </View>
                   </View>
-                </View>
-              </ThemedView>
-            </Pressable>
-          ))}
-        </View>
+                </ThemedView>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </View>
     </ScrollView>
   );
