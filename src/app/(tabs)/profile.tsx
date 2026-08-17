@@ -187,17 +187,23 @@ export default function ProfileScreen() {
           <ThemedText type="smallBold">Saved markets</ThemedText>
           <View style={styles.list}>
             {SAVED_MARKETS.map((market) => (
-              <ThemedView key={market.id} type="backgroundElement" style={styles.savedRow}>
-                <View style={styles.savedRowText}>
-                  <ThemedText type="default" themeColor="text">
-                    {market.name}
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {market.date} · {market.place}
-                  </ThemedText>
-                </View>
-                <MaterialCommunityIcons name="heart" size={20} color={theme.accent} />
-              </ThemedView>
+              <Pressable
+                key={market.id}
+                onPress={() =>
+                  router.push({ pathname: '/market/[id]', params: { id: market.id } })
+                }>
+                <ThemedView type="backgroundElement" style={styles.savedRow}>
+                  <View style={styles.savedRowText}>
+                    <ThemedText type="default" themeColor="text">
+                      {market.name}
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {market.date} · {market.place}
+                    </ThemedText>
+                  </View>
+                  <MaterialCommunityIcons name="heart" size={20} color={theme.accent} />
+                </ThemedView>
+              </Pressable>
             ))}
           </View>
         </View>

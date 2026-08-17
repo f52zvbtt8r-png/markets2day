@@ -1,4 +1,5 @@
 import Feather from '@expo/vector-icons/Feather';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,6 +44,7 @@ const MARKETS: Market[] = [
 
 export default function HomeScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const safeAreaInsets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState<Filter>('Today');
 
@@ -99,31 +101,35 @@ export default function HomeScreen() {
 
         <View style={styles.list}>
           {MARKETS.map((market) => (
-            <ThemedView key={market.id} type="backgroundElement" style={styles.card}>
-              <ThemedView type={market.color} style={styles.cardIcon} />
-              <View style={styles.cardContent}>
-                <ThemedText type="default" style={styles.cardTitle}>
-                  {market.name}
-                </ThemedText>
-                <View style={styles.cardMetaRow}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {market.distance}
+            <Pressable
+              key={market.id}
+              onPress={() => router.push({ pathname: '/market/[id]', params: { id: market.id } })}>
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <ThemedView type={market.color} style={styles.cardIcon} />
+                <View style={styles.cardContent}>
+                  <ThemedText type="default" style={styles.cardTitle}>
+                    {market.name}
                   </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    ·
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {market.price}
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    ·
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {market.day}
-                  </ThemedText>
+                  <View style={styles.cardMetaRow}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {market.distance}
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      ·
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {market.price}
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      ·
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {market.day}
+                    </ThemedText>
+                  </View>
                 </View>
-              </View>
-            </ThemedView>
+              </ThemedView>
+            </Pressable>
           ))}
         </View>
       </View>
