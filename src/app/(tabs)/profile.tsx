@@ -10,6 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { supabase } from '@/lib/supabase';
 
 const PROFILE = {
   initials: 'MJ',
@@ -250,6 +251,16 @@ export default function ProfileScreen() {
             </Pressable>
           )}
         </View>
+
+        <View style={styles.logoutSection}>
+          <Pressable onPress={() => supabase.auth.signOut()}>
+            <ThemedView type="backgroundElement" style={styles.logoutButton}>
+              <ThemedText type="default" themeColor="accent" style={styles.logoutButtonText}>
+                Log out
+              </ThemedText>
+            </ThemedView>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
   );
@@ -336,5 +347,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
+  },
+  logoutSection: {
+    marginTop: Spacing.four,
+  },
+  logoutButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  logoutButtonText: {
+    fontWeight: '700',
   },
 });
