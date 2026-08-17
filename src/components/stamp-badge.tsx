@@ -11,7 +11,7 @@ const STATUS_CONFIG: Record<
   { label: string; color: ThemeColor; borderStyle: 'dotted' | 'solid' }
 > = {
   pending: { label: 'Pending', color: 'textSecondary', borderStyle: 'dotted' },
-  community_verified: { label: 'Community verified', color: 'info', borderStyle: 'solid' },
+  community_verified: { label: 'Community verified', color: 'infoDark', borderStyle: 'solid' },
   organiser_verified: { label: 'Organiser verified', color: 'accent', borderStyle: 'solid' },
 };
 

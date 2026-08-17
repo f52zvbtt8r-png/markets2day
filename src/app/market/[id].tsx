@@ -188,7 +188,7 @@ export default function MarketDetailScreen() {
               </ThemedText>
             </View>
             <View style={styles.infoItem}>
-              <View style={[styles.confirmedDot, { backgroundColor: theme.info }]} />
+              <View style={[styles.confirmedDot, { backgroundColor: theme.infoDark }]} />
               <ThemedText type="small" themeColor="textSecondary">
                 confirmed {lastConfirmed}
               </ThemedText>
