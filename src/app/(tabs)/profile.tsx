@@ -19,7 +19,6 @@ import { supabase } from '@/lib/supabase';
 type Profile = {
   name: string | null;
   hometown: string | null;
-  points: number;
 };
 
 function getInitials(name: string | null, email: string | undefined) {
@@ -39,49 +38,18 @@ type Badge = {
   title: string;
   description: string;
   earned: boolean;
-  status?: StampStatus;
 };
-
-const BADGES: Badge[] = [
-  {
-    title: 'Market Explorer',
-    description: 'Added 5 markets, confirmed 10, added 25 photos',
-    earned: true,
-  },
-  {
-    title: 'Local Market Expert',
-    description: '15 markets added or 50+ confirmations',
-    earned: false,
-    status: 'pending',
-  },
-];
 
 type ManagedMarket = {
   id: string;
   name: string;
 };
 
-const MY_MARKETS: ManagedMarket[] = [
-  { id: '1', name: 'Grote Markt Vlooienmarkt' },
-  { id: '2', name: 'De Haagse Markt' },
-];
-
 type SavedMarket = {
   id: string;
   name: string;
-  date: string;
-  place: string;
+  subtitle: string;
 };
-
-const SAVED_MARKETS: SavedMarket[] = [
-  { id: '1', name: 'Grote Markt Vlooienmarkt', date: 'Sat 15 Aug', place: 'Den Haag' },
-  {
-    id: '2',
-    name: 'Zeeheldenkwartier Artisan Market',
-    date: 'Sun 16 Aug',
-    place: 'Zeeheldenkwartier',
-  },
-];
 
 type Review = {
   id: string;
@@ -90,28 +58,12 @@ type Review = {
   text: string;
 };
 
-const REVIEWS: Review[] = [
-  {
-    id: '1',
-    market: 'De Haagse Markt',
-    rating: 5,
-    text: 'Amazing variety of fresh produce, went early and it was still buzzing.',
-  },
-  {
-    id: '2',
-    market: 'Grote Markt Vlooienmarkt',
-    rating: 4,
-    text: 'Found some great vintage furniture, gets crowded by midday on Saturdays.',
-  },
-  {
-    id: '3',
-    market: 'Zeeheldenkwartier Artisan Market',
-    rating: 4,
-    text: 'Lovely small market, the coffee stall near the entrance is a must.',
-  },
-];
-
 const STARS = [1, 2, 3, 4, 5];
+
+const MARKET_EXPLORER_MARKETS_THRESHOLD = 5;
+const MARKET_EXPLORER_CONFIRMATIONS_THRESHOLD = 10;
+const LOCAL_EXPERT_MARKETS_THRESHOLD = 15;
+const LOCAL_EXPERT_CONFIRMATIONS_THRESHOLD = 50;
 
 export default function ProfileScreen() {
   const theme = useTheme();
@@ -122,37 +74,119 @@ export default function ProfileScreen() {
   const [reviewsExpanded, setReviewsExpanded] = useState(false);
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [isProfileLoading, setIsProfileLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editHometown, setEditHometown] = useState('');
+
+  const [savedMarkets, setSavedMarkets] = useState<SavedMarket[]>([]);
+  const [myMarkets, setMyMarkets] = useState<ManagedMarket[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [marketsAdded, setMarketsAdded] = useState(0);
+  const [confirmationsCount, setConfirmationsCount] = useState(0);
 
   useEffect(() => {
     if (!user) {
       return;
     }
     let cancelled = false;
-    setIsProfileLoading(true);
-    supabase
-      .from('profiles')
-      .select('name, hometown, points')
-      .eq('id', user.id)
-      .single()
-      .then(({ data, error }) => {
-        if (cancelled) {
-          return;
-        }
-        if (!error && data) {
-          setProfile(data);
-        }
-        setIsProfileLoading(false);
-      });
+    setIsLoading(true);
+
+    (async () => {
+      const [
+        profileResult,
+        savedResult,
+        myMarketsResult,
+        reviewsResult,
+        marketsAddedResult,
+        confirmationsResult,
+      ] = await Promise.all([
+        supabase.from('profiles').select('name, hometown').eq('id', user.id).single(),
+        supabase
+          .from('saved_markets')
+          .select('created_at, markets(id, name)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('markets')
+          .select('id, name')
+          .eq('organiser_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('reviews')
+          .select('id, stars, text, markets(name)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('markets')
+          .select('id', { count: 'exact', head: true })
+          .eq('created_by', user.id),
+        supabase
+          .from('confirmations')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (!profileResult.error && profileResult.data) {
+        setProfile(profileResult.data);
+      }
+
+      setSavedMarkets(
+        (savedResult.data ?? [])
+          .filter((row: any) => row.markets)
+          .map((row: any) => ({
+            id: row.markets.id,
+            name: row.markets.name,
+            subtitle: '',
+          }))
+      );
+
+      setMyMarkets(myMarketsResult.data ?? []);
+
+      setReviews(
+        (reviewsResult.data ?? []).map((row: any) => ({
+          id: row.id,
+          market: row.markets?.name ?? 'Unknown market',
+          rating: row.stars,
+          text: row.text ?? '',
+        }))
+      );
+
+      setMarketsAdded(marketsAddedResult.count ?? 0);
+      setConfirmationsCount(confirmationsResult.count ?? 0);
+
+      setIsLoading(false);
+    })();
+
     return () => {
       cancelled = true;
     };
   }, [user]);
 
-  const visibleReviews = reviewsExpanded ? REVIEWS : REVIEWS.slice(0, 1);
+  const points = marketsAdded * 2 + confirmationsCount + reviews.length;
+
+  const badges: Badge[] = [
+    {
+      title: 'Market Explorer',
+      description: 'Added 5 markets, confirmed 10, added 25 photos',
+      earned:
+        marketsAdded >= MARKET_EXPLORER_MARKETS_THRESHOLD ||
+        confirmationsCount >= MARKET_EXPLORER_CONFIRMATIONS_THRESHOLD,
+    },
+    {
+      title: 'Local Market Expert',
+      description: '15 markets added or 50+ confirmations',
+      earned:
+        marketsAdded >= LOCAL_EXPERT_MARKETS_THRESHOLD ||
+        confirmationsCount >= LOCAL_EXPERT_CONFIRMATIONS_THRESHOLD,
+    },
+  ];
+
+  const visibleReviews = reviewsExpanded ? reviews : reviews.slice(0, 1);
 
   const insets = {
     ...safeAreaInsets,
@@ -194,11 +228,7 @@ export default function ProfileScreen() {
       return;
     }
 
-    setProfile((current) => ({
-      points: current?.points ?? 0,
-      name: nextName,
-      hometown: nextHometown,
-    }));
+    setProfile({ name: nextName, hometown: nextHometown });
     setIsEditing(false);
     showToast('Profile updated');
   };
@@ -210,7 +240,7 @@ export default function ProfileScreen() {
     return null;
   }
 
-  if (isProfileLoading) {
+  if (isLoading) {
     return (
       <View style={[styles.screen, styles.loadingScreen, { backgroundColor: theme.background }]}>
         <ThemedText type="default" themeColor="textSecondary">
@@ -246,7 +276,7 @@ export default function ProfileScreen() {
                 type="small"
                 themeColor="textSecondary"
                 style={!profile?.hometown && styles.hometownPlaceholder}>
-                {profile?.hometown || 'Add your hometown'} · {profile?.points ?? 0} points
+                {profile?.hometown || 'Add your hometown'} · {points} points
               </ThemedText>
             </View>
           </View>
@@ -272,12 +302,12 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <ThemedText type="smallBold">Badges</ThemedText>
             <View style={styles.list}>
-              {BADGES.map((badge) => (
+              {badges.map((badge) => (
                 <ThemedView
                   key={badge.title}
                   type="backgroundElement"
                   style={[styles.badgeCard, !badge.earned && styles.unearned]}>
-                  {badge.status && <StampBadge status={badge.status} />}
+                  {!badge.earned && <StampBadge status="pending" />}
                   <ThemedText type="smallBold" themeColor="text">
                     {badge.title}
                   </ThemedText>
@@ -291,89 +321,111 @@ export default function ProfileScreen() {
 
           <View style={styles.section}>
             <ThemedText type="smallBold">My markets</ThemedText>
-            <View style={styles.list}>
-              {MY_MARKETS.map((market) => (
-                <Pressable
-                  key={market.id}
-                  onPress={() =>
-                    router.push({ pathname: '/market/[id]/manage', params: { id: market.id } })
-                  }>
-                  <ThemedView type="backgroundElement" style={styles.savedRow}>
-                    <ThemedText type="default" themeColor="text">
-                      {market.name}
-                    </ThemedText>
-                    <Feather name="chevron-right" size={18} color={theme.textSecondary} />
-                  </ThemedView>
-                </Pressable>
-              ))}
-            </View>
+            {myMarkets.length === 0 ? (
+              <ThemedText type="default" themeColor="textSecondary">
+                You haven&apos;t claimed any markets yet
+              </ThemedText>
+            ) : (
+              <View style={styles.list}>
+                {myMarkets.map((market) => (
+                  <Pressable
+                    key={market.id}
+                    onPress={() =>
+                      router.push({ pathname: '/market/[id]/manage', params: { id: market.id } })
+                    }>
+                    <ThemedView type="backgroundElement" style={styles.savedRow}>
+                      <ThemedText type="default" themeColor="text">
+                        {market.name}
+                      </ThemedText>
+                      <Feather name="chevron-right" size={18} color={theme.textSecondary} />
+                    </ThemedView>
+                  </Pressable>
+                ))}
+              </View>
+            )}
           </View>
 
           <View style={styles.section}>
             <ThemedText type="smallBold">Saved markets</ThemedText>
-            <View style={styles.list}>
-              {SAVED_MARKETS.map((market) => (
-                <Pressable
-                  key={market.id}
-                  onPress={() =>
-                    router.push({ pathname: '/market/[id]', params: { id: market.id } })
-                  }>
-                  <ThemedView type="backgroundElement" style={styles.savedRow}>
-                    <View style={styles.savedRowText}>
-                      <ThemedText type="default" themeColor="text">
-                        {market.name}
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {market.date} · {market.place}
-                      </ThemedText>
-                    </View>
-                    <MaterialCommunityIcons name="heart" size={20} color={theme.accent} />
-                  </ThemedView>
-                </Pressable>
-              ))}
-            </View>
+            {savedMarkets.length === 0 ? (
+              <ThemedText type="default" themeColor="textSecondary">
+                Nothing saved yet
+              </ThemedText>
+            ) : (
+              <View style={styles.list}>
+                {savedMarkets.map((market) => (
+                  <Pressable
+                    key={market.id}
+                    onPress={() =>
+                      router.push({ pathname: '/market/[id]', params: { id: market.id } })
+                    }>
+                    <ThemedView type="backgroundElement" style={styles.savedRow}>
+                      <View style={styles.savedRowText}>
+                        <ThemedText type="default" themeColor="text">
+                          {market.name}
+                        </ThemedText>
+                        {market.subtitle.length > 0 && (
+                          <ThemedText type="small" themeColor="textSecondary">
+                            {market.subtitle}
+                          </ThemedText>
+                        )}
+                      </View>
+                      <MaterialCommunityIcons name="heart" size={20} color={theme.accent} />
+                    </ThemedView>
+                  </Pressable>
+                ))}
+              </View>
+            )}
           </View>
 
           <View style={styles.section}>
             <ThemedText type="smallBold">Markets reviewed</ThemedText>
-            <View style={styles.list}>
-              {visibleReviews.map((review) => (
-                <ThemedView key={review.id} type="backgroundElement" style={styles.reviewCard}>
-                  <View style={styles.reviewHeader}>
-                    <ThemedText type="default" themeColor="text">
-                      {review.market}
-                    </ThemedText>
-                    <View style={styles.reviewStars}>
-                      {STARS.map((star) => (
-                        <MaterialCommunityIcons
-                          key={star}
-                          name={star <= review.rating ? 'star' : 'star-outline'}
-                          size={14}
-                          color={theme.accent}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {review.text}
-                  </ThemedText>
-                </ThemedView>
-              ))}
-            </View>
+            {reviews.length === 0 ? (
+              <ThemedText type="default" themeColor="textSecondary">
+                You haven&apos;t reviewed any markets yet
+              </ThemedText>
+            ) : (
+              <>
+                <View style={styles.list}>
+                  {visibleReviews.map((review) => (
+                    <ThemedView key={review.id} type="backgroundElement" style={styles.reviewCard}>
+                      <View style={styles.reviewHeader}>
+                        <ThemedText type="default" themeColor="text">
+                          {review.market}
+                        </ThemedText>
+                        <View style={styles.reviewStars}>
+                          {STARS.map((star) => (
+                            <MaterialCommunityIcons
+                              key={star}
+                              name={star <= review.rating ? 'star' : 'star-outline'}
+                              size={14}
+                              color={theme.accent}
+                            />
+                          ))}
+                        </View>
+                      </View>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {review.text}
+                      </ThemedText>
+                    </ThemedView>
+                  ))}
+                </View>
 
-            {REVIEWS.length > 1 && (
-              <Pressable
-                onPress={() => setReviewsExpanded((current) => !current)}
-                style={styles.toggleRow}>
-                <ThemedText type="small" themeColor="accent">
-                  {reviewsExpanded ? 'Show less' : `Show ${REVIEWS.length - 1} more reviews`}
-                </ThemedText>
-                <Feather
-                  name={reviewsExpanded ? 'chevron-up' : 'chevron-down'}
-                  size={16}
-                  color={theme.accent}
-                />
-              </Pressable>
+                {reviews.length > 1 && (
+                  <Pressable
+                    onPress={() => setReviewsExpanded((current) => !current)}
+                    style={styles.toggleRow}>
+                    <ThemedText type="small" themeColor="accent">
+                      {reviewsExpanded ? 'Show less' : `Show ${reviews.length - 1} more reviews`}
+                    </ThemedText>
+                    <Feather
+                      name={reviewsExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={theme.accent}
+                    />
+                  </Pressable>
+                )}
+              </>
             )}
           </View>
 
