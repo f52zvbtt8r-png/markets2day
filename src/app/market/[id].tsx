@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,6 +11,7 @@ import { ThemedTextInput } from '@/components/themed-text-input';
 import { ThemedView } from '@/components/themed-view';
 import { Toast } from '@/components/toast';
 import { Fonts, MaxContentWidth, Spacing, ThemeColor } from '@/constants/theme';
+import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
@@ -35,23 +36,22 @@ type MarketRow = {
 };
 
 const PHOTO_COLORS: ThemeColor[] = ['accent', 'info', 'tertiary'];
-const COMMUNITY_VERIFIED_THRESHOLD = 3;
 const STARS = [1, 2, 3, 4, 5];
 
 type Tab = 'info' | 'reviews';
 
 type Review = {
-  id: number;
+  id: string;
   author: string;
   rating: number;
   text: string;
-  isAnonymous: boolean;
 };
 
 export default function MarketDetailScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuth();
 
   const [market, setMarket] = useState<MarketRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,13 +62,17 @@ export default function MarketDetailScreen() {
   const [confirmations, setConfirmations] = useState(0);
   const [lastConfirmed, setLastConfirmed] = useState('');
   const [status, setStatus] = useState<StampStatus>('pending');
+  const [hasConfirmed, setHasConfirmed] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [reviews, setReviews] = useState<Review[]>([]);
   const [draftRating, setDraftRating] = useState(0);
   const [draftText, setDraftText] = useState('');
   const [draftIsAnonymous, setDraftIsAnonymous] = useState(false);
-  const nextReviewId = useRef(0);
+  const [isPostingReview, setIsPostingReview] = useState(false);
 
   const [isClaimFormOpen, setIsClaimFormOpen] = useState(false);
   const [isClaimed, setIsClaimed] = useState(false);
@@ -76,77 +80,177 @@ export default function MarketDetailScreen() {
   const [claimEmail, setClaimEmail] = useState('');
   const [claimNotes, setClaimNotes] = useState('');
   const [claimConfirmed, setClaimConfirmed] = useState(false);
+  const [isSubmittingClaim, setIsSubmittingClaim] = useState(false);
 
   const { toastMessage, showToast } = useToast();
 
   useEffect(() => {
-    if (!id) {
+    if (!id || !user) {
       return;
     }
     let cancelled = false;
     setIsLoading(true);
     setNotFound(false);
-    supabase
-      .from('markets')
-      .select(
-        'id, name, categories, indoor_outdoor, description, opening_days, opening_times, extra_info, entry_free, entry_price, dogs_allowed, dogs_comment, website_url, instagram_url, status, confirmation_count'
-      )
-      .eq('id', id)
-      .single()
-      .then(({ data, error }) => {
-        if (cancelled) {
-          return;
-        }
-        if (error || !data) {
-          setNotFound(true);
-          setIsLoading(false);
-          return;
-        }
-        setMarket(data);
-        setConfirmations(data.confirmation_count);
-        setStatus(data.status);
+
+    (async () => {
+      const { data: marketData, error: marketError } = await supabase
+        .from('markets')
+        .select(
+          'id, name, categories, indoor_outdoor, description, opening_days, opening_times, extra_info, entry_free, entry_price, dogs_allowed, dogs_comment, website_url, instagram_url, status, confirmation_count'
+        )
+        .eq('id', id)
+        .single();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (marketError || !marketData) {
+        setNotFound(true);
         setIsLoading(false);
-      });
+        return;
+      }
+
+      const [confirmationResult, savedResult, reviewsResult] = await Promise.all([
+        supabase
+          .from('confirmations')
+          .select('id')
+          .eq('market_id', id)
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('saved_markets')
+          .select('user_id')
+          .eq('market_id', id)
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('reviews')
+          .select('id, stars, text, is_anonymous, profiles(name)')
+          .eq('market_id', id)
+          .order('created_at', { ascending: false }),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      setMarket(marketData);
+      setConfirmations(marketData.confirmation_count);
+      setStatus(marketData.status);
+      setHasConfirmed(!!confirmationResult.data);
+      setIsSaved(!!savedResult.data);
+      setReviews(
+        (reviewsResult.data ?? []).map((row: any) => ({
+          id: row.id,
+          author: row.is_anonymous ? 'Anonymous' : row.profiles?.name || 'Market visitor',
+          rating: row.stars,
+          text: row.text ?? '',
+        }))
+      );
+      setIsLoading(false);
+    })();
+
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, user]);
 
-  const handleConfirm = () => {
-    setConfirmations((current) => {
-      const next = current + 1;
-      if (status === 'pending' && next >= COMMUNITY_VERIFIED_THRESHOLD) {
-        setStatus('community_verified');
-      }
-      return next;
+  const handleConfirm = async () => {
+    if (!user || !market || isConfirming) {
+      return;
+    }
+    setIsConfirming(true);
+    const { data, error } = await supabase.rpc('confirm_market', {
+      p_market_id: market.id,
+      p_user_id: user.id,
     });
-    setLastConfirmed('today');
-    showToast('Thanks for confirming — count updated');
+    setIsConfirming(false);
+
+    if (error) {
+      showToast(error.message);
+      return;
+    }
+
+    const result = data?.[0];
+    if (!result) {
+      return;
+    }
+
+    setConfirmations(result.confirmation_count);
+    setStatus(result.status);
+
+    if (result.already_confirmed) {
+      showToast("You've already confirmed this market");
+    } else {
+      setHasConfirmed(true);
+      setLastConfirmed('today');
+      showToast('Thanks for confirming — count updated');
+    }
   };
 
-  const handleToggleSave = () => {
-    setIsSaved((current) => {
-      const next = !current;
-      showToast(next ? 'Saved! Reminder set.' : 'Removed from saved');
-      return next;
-    });
+  const handleToggleSave = async () => {
+    if (!user || !market || isSaving) {
+      return;
+    }
+    setIsSaving(true);
+    const next = !isSaved;
+
+    const { error } = next
+      ? await supabase.from('saved_markets').insert({ user_id: user.id, market_id: market.id })
+      : await supabase
+          .from('saved_markets')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('market_id', market.id);
+
+    setIsSaving(false);
+
+    if (error) {
+      showToast(error.message);
+      return;
+    }
+
+    setIsSaved(next);
+    showToast(next ? 'Saved! Reminder set.' : 'Removed from saved');
   };
 
   const handleShare = () => {
     showToast('Opening WhatsApp to share this market…');
   };
 
-  const handlePostReview = () => {
-    if (draftRating === 0) {
+  const handlePostReview = async () => {
+    if (!user || !market || draftRating === 0 || isPostingReview) {
       return;
     }
+    setIsPostingReview(true);
+
+    const { data, error } = await supabase
+      .from('reviews')
+      .insert({
+        market_id: market.id,
+        user_id: user.id,
+        stars: draftRating,
+        text: draftText.trim(),
+        is_anonymous: draftIsAnonymous,
+      })
+      .select('id, stars, text, is_anonymous, profiles(name)')
+      .single();
+
+    setIsPostingReview(false);
+
+    if (error || !data) {
+      showToast(error?.message ?? 'Could not post your review');
+      return;
+    }
+
+    const row = data as any;
     setReviews((current) => [
       {
-        id: nextReviewId.current++,
-        author: draftIsAnonymous ? 'Anonymous' : 'You',
-        rating: draftRating,
-        text: draftText.trim(),
-        isAnonymous: draftIsAnonymous,
+        id: row.id,
+        author: row.is_anonymous ? 'Anonymous' : row.profiles?.name || 'Market visitor',
+        rating: row.stars,
+        text: row.text ?? '',
       },
       ...current,
     ]);
@@ -161,10 +265,28 @@ export default function MarketDetailScreen() {
     claimNotes.trim().length > 0 &&
     claimConfirmed;
 
-  const handleSubmitClaim = () => {
-    if (!canSubmitClaim) {
+  const handleSubmitClaim = async () => {
+    if (!canSubmitClaim || !user || !market || isSubmittingClaim) {
       return;
     }
+    setIsSubmittingClaim(true);
+
+    const { error } = await supabase.rpc('submit_market_claim', {
+      p_market_id: market.id,
+      p_user_id: user.id,
+      p_claimant_name: claimName.trim(),
+      p_claimant_email: claimEmail.trim(),
+      p_notes: claimNotes.trim(),
+      p_confirmed_accurate: claimConfirmed,
+    });
+
+    setIsSubmittingClaim(false);
+
+    if (error) {
+      showToast(error.message);
+      return;
+    }
+
     setIsClaimed(true);
     setIsClaimFormOpen(false);
     setStatus('organiser_verified');
@@ -222,7 +344,7 @@ export default function MarketDetailScreen() {
               <Pressable hitSlop={Spacing.two} onPress={handleShare}>
                 <Feather name="share-2" size={20} color={theme.textSecondary} />
               </Pressable>
-              <Pressable hitSlop={Spacing.two} onPress={handleToggleSave}>
+              <Pressable hitSlop={Spacing.two} onPress={handleToggleSave} disabled={isSaving}>
                 <MaterialCommunityIcons
                   name={isSaved ? 'heart' : 'heart-outline'}
                   size={20}
@@ -270,14 +392,28 @@ export default function MarketDetailScreen() {
                 </ThemedText>
               </ThemedView>
             </Pressable>
-            <Pressable style={styles.actionButtonWrapper} onPress={handleConfirm}>
-              <ThemedView
-                type="background"
-                style={[styles.secondaryButton, { borderColor: theme.accent }]}>
-                <ThemedText type="default" themeColor="accent" style={styles.actionButtonText}>
-                  Confirm active
-                </ThemedText>
-              </ThemedView>
+            <Pressable
+              style={styles.actionButtonWrapper}
+              onPress={handleConfirm}
+              disabled={isConfirming}>
+              {hasConfirmed ? (
+                <ThemedView type="backgroundElement" style={styles.secondaryButton}>
+                  <ThemedText
+                    type="default"
+                    themeColor="textSecondary"
+                    style={styles.actionButtonText}>
+                    Confirmed
+                  </ThemedText>
+                </ThemedView>
+              ) : (
+                <ThemedView
+                  type="background"
+                  style={[styles.secondaryButton, { borderColor: theme.accent }]}>
+                  <ThemedText type="default" themeColor="accent" style={styles.actionButtonText}>
+                    {isConfirming ? 'Confirming…' : 'Confirm active'}
+                  </ThemedText>
+                </ThemedView>
+              )}
             </Pressable>
           </View>
 
@@ -413,15 +549,18 @@ export default function MarketDetailScreen() {
                     </ThemedText>
                   </Pressable>
 
-                  <Pressable onPress={handleSubmitClaim} disabled={!canSubmitClaim}>
+                  <Pressable onPress={handleSubmitClaim} disabled={!canSubmitClaim || isSubmittingClaim}>
                     <ThemedView
                       type="accent"
-                      style={[styles.postReviewButton, !canSubmitClaim && styles.disabledButton]}>
+                      style={[
+                        styles.postReviewButton,
+                        (!canSubmitClaim || isSubmittingClaim) && styles.disabledButton,
+                      ]}>
                       <ThemedText
                         type="default"
                         themeColor="background"
                         style={styles.actionButtonText}>
-                        Submit claim
+                        {isSubmittingClaim ? 'Submitting…' : 'Submit claim'}
                       </ThemedText>
                     </ThemedView>
                   </Pressable>
@@ -490,15 +629,18 @@ export default function MarketDetailScreen() {
                   </ThemedText>
                 </View>
 
-                <Pressable onPress={handlePostReview} disabled={draftRating === 0}>
+                <Pressable onPress={handlePostReview} disabled={draftRating === 0 || isPostingReview}>
                   <ThemedView
                     type="accent"
-                    style={[styles.postReviewButton, draftRating === 0 && styles.disabledButton]}>
+                    style={[
+                      styles.postReviewButton,
+                      (draftRating === 0 || isPostingReview) && styles.disabledButton,
+                    ]}>
                     <ThemedText
                       type="default"
                       themeColor="background"
                       style={styles.actionButtonText}>
-                      Post review
+                      {isPostingReview ? 'Posting…' : 'Post review'}
                     </ThemedText>
                   </ThemedView>
                 </Pressable>
